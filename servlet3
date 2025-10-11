@@ -1,0 +1,68 @@
+CREATE TABLE Attendance (
+    StudentID INT,
+    AttendanceDate DATE,
+    Status VARCHAR(10)
+);
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Attendance</title>
+</head>
+<body>
+    <h2>Mark Attendance</h2>
+    <form action="AttendanceServlet" method="post">
+        Student ID: <input type="number" name="studentId" required><br><br>
+        Date: <input type="date" name="date" required><br><br>
+        Status:
+        <select name="status" required>
+            <option value="Present">Present</option>
+            <option value="Absent">Absent</option>
+        </select><br><br>
+        <input type="submit" value="Submit">
+    </form>
+</body>
+</html>
+
+
+import java.io.*;
+import java.sql.*;
+import javax.servlet.*;
+import javax.servlet.http.*;
+
+public class AttendanceServlet extends HttpServlet {
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();
+
+        int studentId = Integer.parseInt(request.getParameter("studentId"));
+        String date = request.getParameter("date");
+        String status = request.getParameter("status");
+
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            Connection con = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/CompanyDB", "root", "password");
+
+            PreparedStatement ps = con.prepareStatement(
+                "INSERT INTO Attendance (StudentID, AttendanceDate, Status) VALUES (?, ?, ?)");
+            ps.setInt(1, studentId);
+            ps.setString(2, date);
+            ps.setString(3, status);
+
+            int i = ps.executeUpdate();
+            if(i > 0) {
+                out.println("<h2>Attendance recorded successfully!</h2>");
+            } else {
+                out.println("<h2>Error recording attendance.</h2>");
+            }
+
+            ps.close();
+            con.close();
+
+        } catch(Exception e) {
+            out.println("Error: " + e.getMessage());
+        }
+    }
+}
