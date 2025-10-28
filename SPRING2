@@ -1,0 +1,143 @@
+// File: Student.java
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "students")
+public class Student {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @Column(name = "email", unique = true)
+    private String email;
+
+    @Column(name = "course")
+    private String course;
+
+    public Student() {}
+
+    public Student(String name, String email, String course) {
+        this.name = name;
+        this.email = email;
+        this.course = course;
+    }
+
+    // Getters & Setters
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public String getEmail() { return email; }
+    public String getCourse() { return course; }
+
+    public void setName(String name) { this.name = name; }
+    public void setEmail(String email) { this.email = email; }
+    public void setCourse(String course) { this.course = course; }
+
+    @Override
+    public String toString() {
+        return "Student [id=" + id + ", name=" + name + ", email=" + email + ", course=" + course + "]";
+    }
+}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC 
+"-//Hibernate/Hibernate Configuration DTD 5.3//EN"
+"http://hibernate.org/dtd/hibernate-configuration-5.3.dtd">
+
+<hibernate-configuration>
+    <session-factory>
+        <!-- Database Connection -->
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://localhost:3306/studentdb</property>
+        <property name="hibernate.connection.username">root</property>
+        <property name="hibernate.connection.password">yourpassword</property>
+
+        <!-- Hibernate Settings -->
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="hibernate.show_sql">true</property>
+
+        <!-- Mapping Class -->
+        <mapping class="Student"/>
+    </session-factory>
+</hibernate-configuration>
+// File: HibernateCRUDDemo.java
+
+import org.hibernate.*;
+import org.hibernate.cfg.Configuration;
+import java.util.List;
+
+public class HibernateCRUDDemo {
+
+    public static void main(String[] args) {
+        // Load configuration and build SessionFactory
+        SessionFactory factory = new Configuration().configure("hibernate.cfg.xml").buildSessionFactory();
+
+        // Create (Insert)
+        createStudent(factory, new Student("Arjun", "arjun@example.com", "Spring Boot"));
+        createStudent(factory, new Student("Priya", "priya@example.com", "Hibernate ORM"));
+
+        // Read (Fetch)
+        readStudents(factory);
+
+        // Update
+        updateStudent(factory, 1, "Arjun Sharma");
+
+        // Delete
+        deleteStudent(factory, 2);
+
+        factory.close();
+    }
+
+    // CREATE
+    private static void createStudent(SessionFactory factory, Student student) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        session.persist(student);
+        tx.commit();
+        session.close();
+        System.out.println("Student Added: " + student);
+    }
+
+    // READ
+    private static void readStudents(SessionFactory factory) {
+        Session session = factory.openSession();
+        List<Student> students = session.createQuery("from Student", Student.class).list();
+        students.forEach(System.out::println);
+        session.close();
+    }
+
+    // UPDATE
+    private static void updateStudent(SessionFactory factory, int id, String newName) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        Student s = session.get(Student.class, id);
+        if (s != null) {
+            s.setName(newName);
+            session.update(s);
+            tx.commit();
+            System.out.println("Updated: " + s);
+        } else {
+            System.out.println("Student not found with ID: " + id);
+        }
+        session.close();
+    }
+
+    // DELETE
+    private static void deleteStudent(SessionFactory factory, int id) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        Student s = session.get(Student.class, id);
+        if (s != null) {
+            session.delete(s);
+            tx.commit();
+            System.out.println("Deleted Student with ID: " + id);
+        } else {
+            System.out.println("Student not found with ID: " + id);
+        }
+        session.close();
+    }
+}
