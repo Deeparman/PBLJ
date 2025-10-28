@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC 
+"-//Hibernate/Hibernate Configuration DTD 5.3//EN"
+"http://hibernate.org/dtd/hibernate-configuration-5.3.dtd">
+
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://localhost:3306/bankdb</property>
+        <property name="hibernate.connection.username">root</property>
+        <property name="hibernate.connection.password">yourpassword</property>
+
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="hibernate.show_sql">true</property>
+
+        <mapping class="Account"/>
+        <mapping class="TransactionRecord"/>
+    </session-factory>
+</hibernate-configuration>
+
+// File: Account.java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "accounts")
+public class Account {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    @Column(nullable = false, unique = true)
+    private String accountNumber;
+
+    @Column(nullable = false)
+    private double balance;
+
+    public Account() {}
+
+    public Account(String accountNumber, double balance) {
+        this.accountNumber = accountNumber;
+        this.balance = balance;
+    }
+
+    public int getId() { return id; }
+    public String getAccountNumber() { return accountNumber; }
+    public double getBalance() { return balance; }
+    public void setBalance(double balance) { this.balance = balance; }
+
+    @Override
+    public String toString() {
+        return "Account[id=" + id + ", accountNumber=" + accountNumber + ", balance=" + balance + "]";
+    }
+}
+
+// File: TransactionRecord.java
+import jakarta.persistence.*;
+import java.util.Date;
+
+@Entity
+@Table(name = "transactions")
+public class TransactionRecord {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    private String fromAccount;
+    private String toAccount;
+    private double amount;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date date = new Date();
+
+    public TransactionRecord() {}
+
+    public TransactionRecord(String fromAccount, String toAccount, double amount) {
+        this.fromAccount = fromAccount;
+        this.toAccount = toAccount;
+        this.amount = amount;
+    }
+
+    @Override
+    public String toString() {
+        return "TransactionRecord[id=" + id + ", from=" + fromAccount + ", to=" + toAccount +
+                ", amount=" + amount + ", date=" + date + "]";
+    }
+}
+
+// File: AccountDAO.java
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class AccountDAO {
+
+    @Autowired
+    private SessionFactory sessionFactory;
+
+    private Session getSession() {
+        return sessionFactory.getCurrentSession();
+    }
+
+    public Account findByAccountNumber(String accNum) {
+        return getSession()
+                .createQuery("FROM Account WHERE accountNumber = :acc", Account.class)
+                .setParameter("acc", accNum)
+                .uniqueResult();
+    }
+
+    public void update(Account account) {
+        getSession().merge(account);
+    }
+
+    public void saveTransaction(TransactionRecord transaction) {
+        getSession().persist(transaction);
+    }
+}
+
+// File: AccountService.java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class AccountService {
+
+    @Autowired
+    private AccountDAO dao;
+
+    @Transactional
+    public void transferMoney(String fromAcc, String toAcc, double amount) {
+        Account sender = dao.findByAccountNumber(fromAcc);
+        Account receiver = dao.findByAccountNumber(toAcc);
+
+        if (sender == null || receiver == null)
+            throw new RuntimeException("Invalid account(s)");
+
+        if (sender.getBalance() < amount)
+            throw new RuntimeException("Insufficient balance in " + fromAcc);
+
+        sender.setBalance(sender.getBalance() - amount);
+        receiver.setBalance(receiver.getBalance() + amount);
+
+        dao.update(sender);
+        dao.update(receiver);
+
+        dao.saveTransaction(new TransactionRecord(fromAcc, toAcc, amount));
+
+        System.out.println("Transaction successful: " + amount + " transferred from " + fromAcc + " to " + toAcc);
+    }
+}
+
+// File: AppConfig.java
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+import org.springframework.context.annotation.*;
+import org.springframework.orm.hibernate5.HibernateTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+@Configuration
+@ComponentScan(basePackages = {"."})
+@EnableTransactionManagement
+public class AppConfig {
+
+    @Bean
+    public SessionFactory sessionFactory() {
+        return new Configuration().configure("hibernate.cfg.xml").buildSessionFactory();
+    }
+
+    @Bean
+    public HibernateTransactionManager transactionManager(SessionFactory factory) {
+        return new HibernateTransactionManager(factory);
+    }
+}
+
+// File: MainApp.java
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.hibernate.SessionFactory;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+
+public class MainApp {
+    public static void main(String[] args) {
+        ApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);
+        SessionFactory factory = context.getBean(SessionFactory.class);
+
+        // Initialize sample accounts (run once)
+        try (Session session = factory.openSession()) {
+            Transaction tx = session.beginTransaction();
+            session.persist(new Account("ACC1001", 5000.0));
+            session.persist(new Account("ACC1002", 2000.0));
+            tx.commit();
+        }
+
+        AccountService service = context.getBean(AccountService.class);
+
+        try {
+            service.transferMoney("ACC1001", "ACC1002", 1000);
+        } catch (Exception e) {
+            System.out.println("Transaction failed: " + e.getMessage());
+        }
+    }
+}
