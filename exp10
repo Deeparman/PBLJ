@@ -1,0 +1,273 @@
+package com.sms.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "courses")
+public class Course {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int courseId;
+
+    private String courseName;
+    private String duration;
+
+    public Course() {}
+    public Course(String courseName, String duration) {
+        this.courseName = courseName;
+        this.duration = duration;
+    }
+
+    // Getters and Setters
+}
+
+.***********************************************************************************************************************************************
+
+package com.sms.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "students")
+public class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int studentId;
+
+    private String name;
+    private double balance;
+
+    @ManyToOne
+    @JoinColumn(name = "course_id")
+    private Course course;
+
+    public Student() {}
+    public Student(String name, Course course, double balance) {
+        this.name = name;
+        this.course = course;
+        this.balance = balance;
+    }
+
+    // Getters and Setters
+}
+
+***********************************************************************************************************************************************
+
+<hibernate-configuration>
+  <session-factory>
+    <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+    <property name="hibernate.connection.url">jdbc:mysql://localhost:3306/studentdb</property>
+    <property name="hibernate.connection.username">root</property>
+    <property name="hibernate.connection.password">yourpassword</property>
+    <property name="hibernate.dialect">org.hibernate.dialect.MySQL8Dialect</property>
+    <property name="hibernate.hbm2ddl.auto">update</property>
+    <property name="show_sql">true</property>
+
+    <mapping class="com.sms.entity.Student"/>
+    <mapping class="com.sms.entity.Course"/>
+  </session-factory>
+</hibernate-configuration>
+
+***********************************************************************************************************************************************
+
+package com.sms.dao;
+
+import com.sms.entity.Student;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public class StudentDAO {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    public void saveStudent(Student student) {
+        entityManager.persist(student);
+    }
+
+    public Student getStudent(int id) {
+        return entityManager.find(Student.class, id);
+    }
+
+    public List<Student> getAllStudents() {
+        return entityManager.createQuery("FROM Student", Student.class).getResultList();
+    }
+
+    public void updateStudent(Student student) {
+        entityManager.merge(student);
+    }
+
+    public void deleteStudent(int id) {
+        Student s = entityManager.find(Student.class, id);
+        if (s != null) entityManager.remove(s);
+    }
+}
+
+***********************************************************************************************************************************************
+package com.sms.service;
+
+import com.sms.entity.Student;
+import com.sms.dao.StudentDAO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class FeeService {
+
+    @Autowired
+    private StudentDAO studentDAO;
+
+    @Transactional
+    public void payFee(int studentId, double amount) {
+        Student s = studentDAO.getStudent(studentId);
+        s.setBalance(s.getBalance() - amount);
+        studentDAO.updateStudent(s);
+        System.out.println("Payment successful for student: " + s.getName());
+    }
+
+    @Transactional
+    public void refundFee(int studentId, double amount) {
+        Student s = studentDAO.getStudent(studentId);
+        s.setBalance(s.getBalance() + amount);
+        studentDAO.updateStudent(s);
+        System.out.println("Refund processed for student: " + s.getName());
+    }
+}
+
+***********************************************************************************************************************************************
+package com.sms.service;
+
+import com.sms.dao.StudentDAO;
+import com.sms.entity.Student;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
+
+@Service
+public class StudentService {
+
+    @Autowired
+    private StudentDAO studentDAO;
+
+    @Transactional
+    public void addStudent(Student s) {
+        studentDAO.saveStudent(s);
+    }
+
+    public List<Student> listStudents() {
+        return studentDAO.getAllStudents();
+    }
+
+    @Transactional
+    public void updateStudent(Student s) {
+        studentDAO.updateStudent(s);
+    }
+
+    @Transactional
+    public void deleteStudent(int id) {
+        studentDAO.deleteStudent(id);
+    }
+}
+
+***********************************************************************************************************************************************
+AppConfig.java
+package com.sms.config;
+
+import org.springframework.context.annotation.*;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import javax.sql.DataSource;
+
+@Configuration
+@ComponentScan(basePackages = "com.sms")
+@EnableTransactionManagement
+public class AppConfig {
+
+    @Bean
+    public DataSource dataSource() {
+        DriverManagerDataSource ds = new DriverManagerDataSource();
+        ds.setUrl("jdbc:mysql://localhost:3306/studentdb");
+        ds.setUsername("root");
+        ds.setPassword("yourpassword");
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        return ds;
+    }
+
+    @Bean
+    public LocalContainerEntityManagerFactoryBean entityManagerFactory() {
+        LocalContainerEntityManagerFactoryBean emf = new LocalContainerEntityManagerFactoryBean();
+        emf.setPackagesToScan("com.sms.entity");
+        return emf;
+    }
+
+    @Bean
+    public JpaTransactionManager transactionManager() {
+        return new JpaTransactionManager();
+    }
+}
+
+***********************************************************************************************************************************************
+
+package com.sms.main;
+
+import com.sms.config.AppConfig;
+import com.sms.entity.Course;
+import com.sms.entity.Student;
+import com.sms.service.FeeService;
+import com.sms.service.StudentService;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import java.util.Scanner;
+
+public class MainApp {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);
+        StudentService studentService = context.getBean(StudentService.class);
+        FeeService feeService = context.getBean(FeeService.class);
+
+        Scanner sc = new Scanner(System.in);
+        int choice;
+
+        do {
+            System.out.println("\n===== Student Management System =====");
+            System.out.println("1. Add Student");
+            System.out.println("2. View Students");
+            System.out.println("3. Update Student");
+            System.out.println("4. Delete Student");
+            System.out.println("5. Pay Fee");
+            System.out.println("6. Refund Fee");
+            System.out.println("0. Exit");
+            System.out.print("Enter your choice: ");
+            choice = sc.nextInt();
+
+            switch (choice) {
+                case 1 -> {
+                    System.out.print("Enter name: ");
+                    String name = sc.next();
+                    Course c = new Course("Spring Boot", "3 months");
+                    Student s = new Student(name, c, 10000);
+                    studentService.addStudent(s);
+                }
+                case 2 -> studentService.listStudents()
+                        .forEach(st -> System.out.println(st.getStudentId() + " - " + st.getName() + " - " + st.getBalance()));
+                case 5 -> {
+                    System.out.print("Enter student ID and amount: ");
+                    feeService.payFee(sc.nextInt(), sc.nextDouble());
+                }
+                case 6 -> {
+                    System.out.print("Enter student ID and refund amount: ");
+                    feeService.refundFee(sc.nextInt(), sc.nextDouble());
+                }
+            }
+        } while (choice != 0);
+
+        context.close();
+    }
+}
